@@ -38,8 +38,8 @@ describe('types', () => {
       expect(INITIAL_STATE.isSteppable).toBe(false);
     });
 
-    it('should have a valid default model', () => {
-      expect(INITIAL_STATE.selectedModel).toBeTruthy();
+    it('should not have showHistory open by default', () => {
+      expect(INITIAL_STATE.showHistory).toBe(false);
     });
   });
 });

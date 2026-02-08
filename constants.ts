@@ -1,6 +1,16 @@
 // --- APP CONFIG ---
 export const APP_VERSION = '3.3';
 
+// --- PER-AGENT MODEL MAPPING ---
+// Flash — fast tasks (search, structure). Pro — quality-critical tasks (facts, writing).
+export const AGENT_MODELS = {
+  SCOUT:     'gemini-3-flash-preview',
+  RADAR:     'gemini-3-flash-preview',
+  ANALYST:   'gemini-3-pro-preview',
+  ARCHITECT: 'gemini-3-flash-preview',
+  WRITER:    'gemini-3-pro-preview',
+} as const;
+
 // --- TIMING CONFIG ---
 export const CHARS_PER_SECOND = 12; // Documentary/Dramatic pace ~130-140 wpm
 export const MIN_BLOCK_DURATION_SEC = 2;

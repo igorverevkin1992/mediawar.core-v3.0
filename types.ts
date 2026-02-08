@@ -47,7 +47,6 @@ export interface HistoryItem {
 export interface SystemState {
   currentAgent: AgentType | 'IDLE';
   topic: string;
-  selectedModel: string;
   isProcessing: boolean;
   logs: string[];
   
@@ -72,7 +71,6 @@ export interface SystemState {
 export const INITIAL_STATE: SystemState = {
   currentAgent: 'IDLE',
   topic: '',
-  selectedModel: 'gemini-3-pro-preview',
   isProcessing: false,
   isSteppable: false,
   stepStatus: 'IDLE',

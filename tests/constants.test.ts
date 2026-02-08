@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AVAILABLE_MODELS, APP_VERSION, CHARS_PER_SECOND, MIN_BLOCK_DURATION_SEC, MAX_LOG_ENTRIES, API_RETRY_COUNT } from '../constants';
+import { AVAILABLE_MODELS, APP_VERSION, CHARS_PER_SECOND, MIN_BLOCK_DURATION_SEC, MAX_LOG_ENTRIES, API_RETRY_COUNT, AGENT_MODELS } from '../constants';
 
 describe('constants', () => {
   it('APP_VERSION should be a non-empty string', () => {
@@ -29,5 +29,16 @@ describe('constants', () => {
 
   it('API_RETRY_COUNT should be at least 1', () => {
     expect(API_RETRY_COUNT).toBeGreaterThanOrEqual(1);
+  });
+
+  it('AGENT_MODELS should use Flash for Scout, Radar, Architect', () => {
+    expect(AGENT_MODELS.SCOUT).toContain('flash');
+    expect(AGENT_MODELS.RADAR).toContain('flash');
+    expect(AGENT_MODELS.ARCHITECT).toContain('flash');
+  });
+
+  it('AGENT_MODELS should use Pro for Analyst and Writer', () => {
+    expect(AGENT_MODELS.ANALYST).toContain('pro');
+    expect(AGENT_MODELS.WRITER).toContain('pro');
   });
 });

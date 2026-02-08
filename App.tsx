@@ -3,7 +3,7 @@ import React, { useState, useCallback, useEffect, useReducer, useRef } from 'rea
 import { AgentType, SystemState, INITIAL_STATE, ResearchDossier, HistoryItem, TopicSuggestion } from './types';
 import { runRadarAgent, runAnalystAgent, runArchitectAgent, runWriterAgent, generateImageForBlock, runScoutAgent } from './services/geminiService';
 import { saveRunToHistory, fetchHistory, deleteHistoryItem } from './services/supabaseClient';
-import { AVAILABLE_MODELS, APP_VERSION, MAX_LOG_ENTRIES } from './constants';
+import { APP_VERSION, MAX_LOG_ENTRIES, AGENT_MODELS } from './constants';
 import { logger } from './services/logger';
 import AgentLog from './components/AgentLog';
 import ScriptDisplay from './components/ScriptDisplay';
@@ -127,7 +127,7 @@ function App() {
     addLog(`>>> ACTIVATING AGENT S: THE SCOUT (Google Search)...`);
 
     try {
-      const suggestions = await runScoutAgent(stateRef.current.selectedModel);
+      const suggestions = await runScoutAgent();
       if (controller.signal.aborted) return;
 
       addLog(`>>> SCOUT REPORT: ${suggestions.length} TARGETS IDENTIFIED.`);
@@ -162,7 +162,7 @@ function App() {
     addLog(`>>> ACTIVATING AGENT A: THE RADAR...`);
 
     try {
-      const radarOutput = await runRadarAgent(activeTopic, stateRef.current.selectedModel);
+      const radarOutput = await runRadarAgent(activeTopic);
       if (controller.signal.aborted) return;
 
       addLog(">>> RADAR SCAN COMPLETE.");
@@ -198,7 +198,7 @@ function App() {
     addLog(">>> ACTIVATING AGENT B: THE ANALYST (Google Grounding)...");
 
     try {
-      const dossier = await runAnalystAgent(stateRef.current.topic, inputRadar, stateRef.current.selectedModel);
+      const dossier = await runAnalystAgent(stateRef.current.topic, inputRadar);
       if (controller.signal.aborted) return;
 
       addLog(">>> DOSSIER COMPILED.");
@@ -235,7 +235,7 @@ function App() {
     addLog(">>> ACTIVATING AGENT C: THE ARCHITECT...");
 
     try {
-      const structure = await runArchitectAgent(inputDossier, stateRef.current.selectedModel);
+      const structure = await runArchitectAgent(inputDossier);
       if (controller.signal.aborted) return;
 
       addLog(">>> STRUCTURE LOCKED.");
@@ -271,12 +271,12 @@ function App() {
     addLog(">>> ACTIVATING AGENT D: THE WRITER...");
 
     try {
-      const script = await runWriterAgent(inputStructure, inputDossier, stateRef.current.selectedModel);
+      const script = await runWriterAgent(inputStructure, inputDossier);
       if (controller.signal.aborted) return;
 
       addLog(">>> SCRIPT GENERATED.");
 
-      const savedEntry = await saveRunToHistory(stateRef.current.topic, stateRef.current.selectedModel, script);
+      const savedEntry = await saveRunToHistory(stateRef.current.topic, AGENT_MODELS.WRITER, script);
       if (controller.signal.aborted) return;
 
       const newHistory = savedEntry ? [savedEntry, ...stateRef.current.history] : stateRef.current.history;
@@ -406,15 +406,11 @@ function App() {
 
           <div className="bg-mw-gray/30 p-6 rounded-lg border border-mw-slate/30 backdrop-blur-sm">
             <div className="mb-4">
-              <label className="block text-xs font-bold text-mw-slate uppercase mb-2 tracking-wider">Inference Model</label>
-              <select
-                value={state.selectedModel}
-                onChange={(e) => dispatch({ type: 'SET_FIELD', field: 'selectedModel', value: e.target.value })}
-                disabled={state.isProcessing || state.stepStatus !== 'IDLE'}
-                className="w-full bg-black border border-mw-slate/50 rounded p-2 text-white text-sm focus:border-mw-red outline-none font-mono"
-              >
-                {AVAILABLE_MODELS.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
-              </select>
+              <label className="block text-xs font-bold text-mw-slate uppercase mb-2 tracking-wider">Agent Models</label>
+              <div className="bg-black border border-mw-slate/50 rounded p-3 font-mono text-[11px] space-y-1">
+                <div className="flex justify-between"><span className="text-mw-slate">Scout / Radar / Architect</span><span className="text-green-400">Flash</span></div>
+                <div className="flex justify-between"><span className="text-mw-slate">Analyst / Writer</span><span className="text-purple-400">Pro</span></div>
+              </div>
             </div>
 
             <label className="block text-xs font-bold text-mw-red uppercase mb-2 tracking-wider">Target Vector (Topic)</label>

@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { AGENT_SCOUT_PROMPT, AGENT_A_PROMPT, AGENT_B_PROMPT, AGENT_C_PROMPT, AGENT_D_PROMPT, CHARS_PER_SECOND, MIN_BLOCK_DURATION_SEC, IMAGE_GEN_MODEL, IMAGE_GEN_PROMPT_PREFIX, API_RETRY_COUNT, API_RETRY_BASE_DELAY_MS } from "../constants";
+import { AGENT_SCOUT_PROMPT, AGENT_A_PROMPT, AGENT_B_PROMPT, AGENT_C_PROMPT, AGENT_D_PROMPT, CHARS_PER_SECOND, MIN_BLOCK_DURATION_SEC, IMAGE_GEN_MODEL, IMAGE_GEN_PROMPT_PREFIX, API_RETRY_COUNT, API_RETRY_BASE_DELAY_MS, AGENT_MODELS } from "../constants";
 import { ResearchDossier, ScriptBlock, TopicSuggestion } from "../types";
 import { logger } from "./logger";
 
@@ -51,7 +51,6 @@ const ONES = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'
 const TEENS = ['ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
 const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
 
-// Basic number to words converter (0 - 999,999)
 const numberToWords = (n: number): string => {
   if (n === 0) return 'zero';
   let str = '';
@@ -87,30 +86,24 @@ const expandTextForTiming = (text: string): string => {
   if (!text) return '';
   let s = text.toLowerCase().trim();
 
-  // 1. Handle Currency ($130 -> 130 us dollars)
   s = s.replace(/\$([0-9,]+(?:\.[0-9]+)?)/g, (_match, p1) => {
      return p1 + ' us dollars';
   });
 
-  // 2. Handle Percent (60% -> 60 percent)
   s = s.replace(/([0-9,]+(?:\.[0-9]+)?)%/g, '$1 percent');
 
-  // 3. Handle Years (e.g. 2025 -> twenty twenty five)
   s = s.replace(/\b(19|20)(\d{2})\b/g, (_match, p1, p2) => {
       return numberToWords(parseInt(p1)) + ' ' + numberToWords(parseInt(p2));
   });
 
-  // 4. Handle Decimals (408.6 -> four hundred eight point six)
   s = s.replace(/(\d+)\.(\d+)/g, (_match, p1, p2) => {
       return numberToWords(parseInt(p1.replace(/,/g, ''))) + ' point ' + numberToWords(parseInt(p2));
   });
 
-  // 5. Handle standard integers
   s = s.replace(/\d+/g, (match) => {
       return numberToWords(parseInt(match.replace(/,/g, '')));
   });
 
-  // 6. Cleanup
   s = s.replace(/[^a-z0-9\s]/g, '');
 
   return s.replace(/\s+/g, ' ').trim();
@@ -145,8 +138,8 @@ const calculateDurationAndRetiming = (script: ScriptBlock[]): ScriptBlock[] => {
 };
 
 // --- AGENT FUNCTIONS ---
+// Models are hardcoded per agent via AGENT_MODELS (constants.ts)
 
-// Helper to determine if model supports search tools
 const getToolsForModel = (model: string) => {
   if (model.includes('gemini-3')) {
     return [{ googleSearch: {} }];
@@ -154,16 +147,17 @@ const getToolsForModel = (model: string) => {
   return undefined;
 };
 
-export const runScoutAgent = async (model: string): Promise<TopicSuggestion[]> => {
+export const runScoutAgent = async (): Promise<TopicSuggestion[]> => {
+  const model = AGENT_MODELS.SCOUT;
   return withRetry(async () => {
     const ai = getClient();
     const tools = getToolsForModel(model);
 
     const response = await ai.models.generateContent({
-      model: model,
+      model,
       contents: AGENT_SCOUT_PROMPT,
       config: {
-        tools: tools,
+        tools,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -186,11 +180,12 @@ export const runScoutAgent = async (model: string): Promise<TopicSuggestion[]> =
   }, 'runScoutAgent');
 };
 
-export const runRadarAgent = async (topic: string, model: string): Promise<string> => {
+export const runRadarAgent = async (topic: string): Promise<string> => {
+  const model = AGENT_MODELS.RADAR;
   return withRetry(async () => {
     const ai = getClient();
     const response = await ai.models.generateContent({
-      model: model,
+      model,
       contents: `TOPIC: ${topic}\n\n${AGENT_A_PROMPT}`,
       config: {
         temperature: 0.7,
@@ -200,16 +195,17 @@ export const runRadarAgent = async (topic: string, model: string): Promise<strin
   }, 'runRadarAgent');
 };
 
-export const runAnalystAgent = async (topic: string, radarAnalysis: string, model: string): Promise<ResearchDossier> => {
+export const runAnalystAgent = async (topic: string, radarAnalysis: string): Promise<ResearchDossier> => {
+  const model = AGENT_MODELS.ANALYST;
   return withRetry(async () => {
     const ai = getClient();
     const tools = getToolsForModel(model);
 
     const response = await ai.models.generateContent({
-      model: model,
+      model,
       contents: `TOPIC: ${topic}\n\nRADAR ANALYSIS: ${radarAnalysis}\n\n${AGENT_B_PROMPT}`,
       config: {
-        tools: tools,
+        tools,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -241,20 +237,25 @@ export const runAnalystAgent = async (topic: string, radarAnalysis: string, mode
   }, 'runAnalystAgent');
 };
 
-export const runArchitectAgent = async (dossier: ResearchDossier | string, model: string): Promise<string> => {
+export const runArchitectAgent = async (dossier: ResearchDossier | string): Promise<string> => {
+  const model = AGENT_MODELS.ARCHITECT;
   return withRetry(async () => {
     const ai = getClient();
     const dossierStr = typeof dossier === 'string' ? dossier : JSON.stringify(dossier, null, 2);
 
     const response = await ai.models.generateContent({
-      model: model,
+      model,
       contents: `DOSSIER: ${dossierStr}\n\n${AGENT_C_PROMPT}`,
     });
     return response.text || "Architect failed to build structure.";
   }, 'runArchitectAgent');
 };
 
-export const runWriterAgent = async (structure: string, dossier: ResearchDossier | string, model: string): Promise<ScriptBlock[]> => {
+// Writer uses streaming to prevent ERR_CONNECTION_CLOSED on large responses.
+// Pro model + 60 blocks + bilingual text + thinking can take 2-3 min.
+// Streaming keeps the connection alive with incremental data chunks.
+export const runWriterAgent = async (structure: string, dossier: ResearchDossier | string): Promise<ScriptBlock[]> => {
+  const model = AGENT_MODELS.WRITER;
   return withRetry(async () => {
     const ai = getClient();
     const dossierStr = typeof dossier === 'string' ? dossier : JSON.stringify(dossier, null, 2);
@@ -263,12 +264,12 @@ export const runWriterAgent = async (structure: string, dossier: ResearchDossier
       ? { thinkingBudget: 2048 }
       : undefined;
 
-    const response = await ai.models.generateContent({
-      model: model,
+    const response = await ai.models.generateContentStream({
+      model,
       contents: `DOSSIER: ${dossierStr}\nSTRUCTURE: ${structure}\n\n${AGENT_D_PROMPT}`,
       config: {
         responseMimeType: "application/json",
-        thinkingConfig: thinkingConfig,
+        thinkingConfig,
         responseSchema: {
           type: Type.ARRAY,
           items: {
@@ -286,10 +287,16 @@ export const runWriterAgent = async (structure: string, dossier: ResearchDossier
       }
     });
 
-    const text = response.text;
-    if (!text) throw new Error("Writer returned empty script.");
+    // Collect all streamed chunks into the full JSON string
+    let fullText = '';
+    for await (const chunk of response) {
+      const part = chunk.text;
+      if (part) fullText += part;
+    }
 
-    const rawScript = safeJsonParse<ScriptBlock[]>(text, 'Writer');
+    if (!fullText) throw new Error("Writer returned empty script.");
+
+    const rawScript = safeJsonParse<ScriptBlock[]>(fullText, 'Writer');
     return calculateDurationAndRetiming(rawScript);
   }, 'runWriterAgent');
 };
