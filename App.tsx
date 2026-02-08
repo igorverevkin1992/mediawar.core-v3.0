@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect, useReducer, useRef } from 'react';
-import { AgentType, SystemState, INITIAL_STATE, ResearchDossier, ScriptBlock, HistoryItem, TopicSuggestion } from './types';
+import { AgentType, SystemState, INITIAL_STATE, ResearchDossier, HistoryItem, TopicSuggestion } from './types';
 import { runRadarAgent, runAnalystAgent, runArchitectAgent, runWriterAgent, generateImageForBlock, runScoutAgent } from './services/geminiService';
 import { saveRunToHistory, fetchHistory, deleteHistoryItem } from './services/supabaseClient';
 import { AVAILABLE_MODELS, APP_VERSION, MAX_LOG_ENTRIES } from './constants';

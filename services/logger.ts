@@ -24,16 +24,9 @@ const log = (level: LogLevel, message: string, data?: unknown): void => {
 
   const formatted = formatEntry(entry);
 
-  switch (level) {
-    case 'error':
-      console.error(formatted, data ?? '');
-      break;
-    case 'warn':
-      console.warn(formatted, data ?? '');
-      break;
-    default:
-      console.log(formatted, data ?? '');
-  }
+  // eslint-disable-next-line no-console -- logger is the only sanctioned place for console usage
+  const out = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
+  out(formatted, data ?? '');
 };
 
 export const logger = {

@@ -1,10 +1,5 @@
 
-import React, { useEffect, useRef } from 'react';
-
-interface LogEntry {
-  message: string;
-  timestamp: string;
-}
+import { useEffect, useRef } from 'react';
 
 interface AgentLogProps {
   logs: string[];

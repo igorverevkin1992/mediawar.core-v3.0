@@ -41,7 +41,7 @@ function safeJsonParse<T>(text: string, label: string): T {
     return JSON.parse(text) as T;
   } catch (err) {
     logger.error(`${label}: Failed to parse JSON response`, { text: text.substring(0, 200), err });
-    throw new Error(`${label}: Invalid JSON response from API`);
+    throw new Error(`${label}: Invalid JSON response from API`, { cause: err });
   }
 }
 
