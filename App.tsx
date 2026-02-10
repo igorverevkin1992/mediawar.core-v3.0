@@ -1,9 +1,9 @@
 
 import React, { useState, useCallback, useEffect, useReducer, useRef } from 'react';
 import { AgentType, SystemState, INITIAL_STATE, ResearchDossier, HistoryItem, TopicSuggestion } from './types';
-import { runRadarAgent, runAnalystAgent, runArchitectAgent, runWriterAgent, generateImageForBlock, runScoutAgent } from './services/geminiService';
+import { runRadarAgent, runAnalystAgent, runArchitectAgent, runFactCheckerAgent, runArchitectCorrectionAgent, runWriterAgent, generateImageForBlock, runScoutAgent } from './services/geminiService';
 import { saveRunToHistory, fetchHistory, deleteHistoryItem } from './services/supabaseClient';
-import { APP_VERSION, MAX_LOG_ENTRIES, AGENT_MODELS } from './constants';
+import { APP_VERSION, MAX_LOG_ENTRIES, AGENT_MODELS, MAX_FACTCHECK_ATTEMPTS } from './constants';
 import { logger } from './services/logger';
 import AgentLog from './components/AgentLog';
 import ScriptDisplay from './components/ScriptDisplay';
@@ -15,6 +15,7 @@ const ScoutIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" heigh
 const RadarIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M12 2v2"/><path d="M12 22v-2"/><path d="m17 20.66-1-1.73"/><path d="M11 10.27a2 2 0 0 0 2.73 0"/><path d="m20.66 17-1.73-1"/><path d="m3.34 17 1.73-1"/><path d="m14 12 2.55-2.55"/><path d="M8.51 12.28 6 15"/></svg>;
 const AnalystIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>;
 const ArchitectIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>;
+const FactCheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>;
 const WriterIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>;
 
 // --- STATE REDUCER ---
@@ -230,7 +231,9 @@ function App() {
       researchDossier: inputDossier,
       currentAgent: AgentType.ARCHITECT,
       isProcessing: true,
-      stepStatus: 'PROCESSING'
+      stepStatus: 'PROCESSING',
+      factCheckAttempts: 0,
+      factCheckOutput: undefined,
     }});
     addLog(">>> ACTIVATING AGENT C: THE ARCHITECT...");
 
@@ -238,7 +241,7 @@ function App() {
       const structure = await runArchitectAgent(inputDossier);
       if (controller.signal.aborted) return;
 
-      addLog(">>> STRUCTURE LOCKED.");
+      addLog(">>> STRUCTURE LOCKED. SENDING TO FACT-CHECKER...");
 
       const isSteppable = stateRef.current.isSteppable;
       dispatch({ type: 'MERGE', partial: {
@@ -248,7 +251,73 @@ function App() {
       }});
       setEditedStructure(structure);
 
-      if (!isSteppable) executeWriter(structure, inputDossier);
+      if (!isSteppable) executeFactChecker(structure, inputDossier, 0);
+    } catch (e: unknown) {
+      if (controller.signal.aborted) return;
+      const message = e instanceof Error ? e.message : String(e);
+      addLog(`ERROR: ${message}`);
+      dispatch({ type: 'MERGE', partial: { isProcessing: false, stepStatus: 'IDLE' } });
+    }
+  };
+
+  const executeFactChecker = async (blueprint: string, inputDossier: ResearchDossier | string, attempt: number) => {
+    cancelCurrentOperation();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    dispatch({ type: 'MERGE', partial: {
+      currentAgent: AgentType.FACTCHECKER,
+      isProcessing: true,
+      stepStatus: 'PROCESSING',
+      factCheckAttempts: attempt + 1,
+    }});
+    addLog(`>>> ACTIVATING AGENT F: THE FACT-CHECKER (attempt ${attempt + 1}/${MAX_FACTCHECK_ATTEMPTS})...`);
+
+    try {
+      const result = await runFactCheckerAgent(blueprint, inputDossier);
+      if (controller.signal.aborted) return;
+
+      const report = `VERDICT: ${result.verdict} | Claims: ${result.totalClaims} | Verified: ${result.verifiedCount} | Errors: ${result.errorCount}\n${result.summary}` +
+        (result.errors.length > 0 ? '\n\nERRORS:\n' + result.errors.map((e, i) => `${i + 1}. "${e.claim}" → ${e.correction} (${e.source})`).join('\n') : '');
+
+      dispatch({ type: 'MERGE', partial: { factCheckOutput: report } });
+
+      if (result.verdict === 'PASS') {
+        addLog(`>>> FACT-CHECK PASSED. ${result.verifiedCount}/${result.totalClaims} claims verified.`);
+
+        const isSteppable = stateRef.current.isSteppable;
+        dispatch({ type: 'MERGE', partial: {
+          isProcessing: !isSteppable,
+          stepStatus: isSteppable ? 'WAITING_FOR_APPROVAL' : 'PROCESSING'
+        }});
+
+        if (!isSteppable) executeWriter(blueprint, inputDossier);
+      } else {
+        addLog(`>>> FACT-CHECK FAILED. ${result.errorCount} error(s) found.`);
+
+        if (attempt + 1 >= MAX_FACTCHECK_ATTEMPTS) {
+          addLog(`>>> MAX FACT-CHECK ATTEMPTS (${MAX_FACTCHECK_ATTEMPTS}) REACHED. Proceeding with current blueprint.`);
+
+          const isSteppable = stateRef.current.isSteppable;
+          dispatch({ type: 'MERGE', partial: {
+            isProcessing: !isSteppable,
+            stepStatus: isSteppable ? 'WAITING_FOR_APPROVAL' : 'PROCESSING'
+          }});
+
+          if (!isSteppable) executeWriter(blueprint, inputDossier);
+        } else {
+          addLog(">>> SENDING CORRECTIONS BACK TO ARCHITECT...");
+
+          const correctedBlueprint = await runArchitectCorrectionAgent(blueprint, result.errors);
+          if (controller.signal.aborted) return;
+
+          addLog(">>> ARCHITECT CORRECTED BLUEPRINT. RE-CHECKING...");
+          dispatch({ type: 'MERGE', partial: { structureMap: correctedBlueprint } });
+          setEditedStructure(correctedBlueprint);
+
+          executeFactChecker(correctedBlueprint, inputDossier, attempt + 1);
+        }
+      }
     } catch (e: unknown) {
       if (controller.signal.aborted) return;
       const message = e instanceof Error ? e.message : String(e);
@@ -309,7 +378,13 @@ function App() {
 
   const handleApproveArchitect = () => {
     if (state.researchDossier) {
-      executeWriter(editedStructure, state.researchDossier);
+      executeFactChecker(editedStructure, state.researchDossier, 0);
+    }
+  };
+
+  const handleApproveFactCheck = () => {
+    if (state.researchDossier && state.structureMap) {
+      executeWriter(state.structureMap, state.researchDossier);
     }
   };
 
@@ -362,6 +437,7 @@ function App() {
     { id: AgentType.RADAR, label: "The Radar", icon: RadarIcon, desc: "Trend Identification" },
     { id: AgentType.ANALYST, label: "The Analyst", icon: AnalystIcon, desc: "Google Grounding" },
     { id: AgentType.ARCHITECT, label: "The Architect", icon: ArchitectIcon, desc: "Structure Mapping" },
+    { id: AgentType.FACTCHECKER, label: "The Fact-Checker", icon: FactCheckIcon, desc: "Verification Loop" },
     { id: AgentType.WRITER, label: "The Writer", icon: WriterIcon, desc: "Visual Scripting" },
   ];
 
@@ -408,7 +484,7 @@ function App() {
             <div className="mb-4">
               <label className="block text-xs font-bold text-mw-slate uppercase mb-2 tracking-wider">Agent Models</label>
               <div className="bg-black border border-mw-slate/50 rounded p-3 font-mono text-[11px] space-y-1">
-                <div className="flex justify-between"><span className="text-mw-slate">Scout / Radar / Architect</span><span className="text-green-400">Flash</span></div>
+                <div className="flex justify-between"><span className="text-mw-slate">Scout / Radar / Architect / Fact-Check</span><span className="text-green-400">Flash</span></div>
                 <div className="flex justify-between"><span className="text-mw-slate">Analyst / Writer</span><span className="text-purple-400">Pro</span></div>
               </div>
             </div>
@@ -468,7 +544,7 @@ function App() {
              <h3 className="text-xs font-bold text-mw-slate uppercase tracking-wider pl-1">Chain of Agents</h3>
              {Steps.map((step) => {
                const isActive = state.currentAgent === step.id;
-               const agentOrder = [AgentType.SCOUT, AgentType.RADAR, AgentType.ANALYST, AgentType.ARCHITECT, AgentType.WRITER, AgentType.COMPLETED];
+               const agentOrder = [AgentType.SCOUT, AgentType.RADAR, AgentType.ANALYST, AgentType.ARCHITECT, AgentType.FACTCHECKER, AgentType.WRITER, AgentType.COMPLETED];
                const currentIdx = state.currentAgent === 'IDLE' ? -1 : agentOrder.indexOf(state.currentAgent);
                const thisIdx = agentOrder.indexOf(step.id);
                const isPast = currentIdx > thisIdx;
@@ -582,12 +658,40 @@ function App() {
                      />
                      <div className="mt-4 flex justify-end">
                        <button onClick={handleApproveArchitect} className="bg-mw-red text-white px-6 py-2 rounded font-bold uppercase tracking-wider text-xs hover:bg-red-600">
-                         Approve &amp; Run Writer &rarr;
+                         Approve &amp; Run Fact-Check &rarr;
                        </button>
                      </div>
                    </div>
                 ) : (
                    <RichTextDisplay content={state.structureMap} />
+                )}
+             </div>
+          )}
+
+          {/* STEP 3.5: FACT-CHECKER OUTPUT */}
+          {(state.currentAgent === AgentType.FACTCHECKER || state.factCheckOutput) && state.factCheckOutput && (
+             <div className={`bg-mw-gray/20 p-6 rounded border ${state.currentAgent === AgentType.FACTCHECKER ? 'border-mw-red shadow-[0_0_15px_rgba(220,38,38,0.2)]' : 'border-mw-slate/30'}`}>
+                <h4 className="text-yellow-400 font-mono text-xs mb-2">
+                  /// FACTCHECK_REPORT (Attempt {state.factCheckAttempts}/{MAX_FACTCHECK_ATTEMPTS})
+                </h4>
+                {state.factCheckOutput.startsWith('VERDICT: PASS') ? (
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-3 h-3 bg-green-500 rounded-full" />
+                    <span className="text-green-400 font-bold text-sm uppercase">All Facts Verified</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-3 h-3 bg-red-500 rounded-full" />
+                    <span className="text-red-400 font-bold text-sm uppercase">Errors Found — Correcting</span>
+                  </div>
+                )}
+                <RichTextDisplay content={state.factCheckOutput} />
+                {state.stepStatus === 'WAITING_FOR_APPROVAL' && state.currentAgent === AgentType.FACTCHECKER && (
+                  <div className="mt-4 flex justify-end">
+                    <button onClick={handleApproveFactCheck} className="bg-mw-red text-white px-6 py-2 rounded font-bold uppercase tracking-wider text-xs hover:bg-red-600">
+                      Approve &amp; Run Writer &rarr;
+                    </button>
+                  </div>
                 )}
              </div>
           )}

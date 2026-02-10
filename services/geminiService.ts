@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { AGENT_SCOUT_PROMPT, AGENT_A_PROMPT, AGENT_B_PROMPT, AGENT_C_PROMPT, AGENT_D_PROMPT, CHARS_PER_SECOND, MIN_BLOCK_DURATION_SEC, IMAGE_GEN_MODEL, IMAGE_GEN_PROMPT_PREFIX, API_RETRY_COUNT, API_RETRY_BASE_DELAY_MS, AGENT_MODELS } from "../constants";
+import { AGENT_SCOUT_PROMPT, AGENT_A_PROMPT, AGENT_B_PROMPT, AGENT_C_PROMPT, AGENT_FACTCHECK_PROMPT, AGENT_ARCHITECT_CORRECTION_PROMPT, AGENT_D_PROMPT, CHARS_PER_SECOND, MIN_BLOCK_DURATION_SEC, IMAGE_GEN_MODEL, IMAGE_GEN_PROMPT_PREFIX, API_RETRY_COUNT, API_RETRY_BASE_DELAY_MS, AGENT_MODELS } from "../constants";
 import { ResearchDossier, ScriptBlock, TopicSuggestion } from "../types";
 import { logger } from "./logger";
 
@@ -249,6 +249,90 @@ export const runArchitectAgent = async (dossier: ResearchDossier | string): Prom
     });
     return response.text || "Architect failed to build structure.";
   }, 'runArchitectAgent');
+};
+
+// --- FACT-CHECKER AGENT ---
+
+export interface FactCheckError {
+  claim: string;
+  correction: string;
+  source: string;
+}
+
+export interface FactCheckResult {
+  verdict: 'PASS' | 'FAIL';
+  totalClaims: number;
+  verifiedCount: number;
+  errorCount: number;
+  errors: FactCheckError[];
+  summary: string;
+}
+
+export const runFactCheckerAgent = async (blueprint: string, dossier: ResearchDossier | string): Promise<FactCheckResult> => {
+  const model = AGENT_MODELS.FACTCHECKER;
+  return withRetry(async () => {
+    const ai = getClient();
+    const tools = getToolsForModel(model);
+    const dossierStr = typeof dossier === 'string' ? dossier : JSON.stringify(dossier, null, 2);
+
+    const response = await ai.models.generateContent({
+      model,
+      contents: `ARCHITECT BLUEPRINT:\n${blueprint}\n\nRESEARCH DOSSIER:\n${dossierStr}\n\n${AGENT_FACTCHECK_PROMPT}`,
+      config: {
+        tools,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            verdict: { type: Type.STRING, enum: ['PASS', 'FAIL'] },
+            totalClaims: { type: Type.NUMBER },
+            verifiedCount: { type: Type.NUMBER },
+            errorCount: { type: Type.NUMBER },
+            errors: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  claim: { type: Type.STRING },
+                  correction: { type: Type.STRING },
+                  source: { type: Type.STRING }
+                },
+                required: ["claim", "correction", "source"]
+              }
+            },
+            summary: { type: Type.STRING }
+          },
+          required: ["verdict", "totalClaims", "verifiedCount", "errorCount", "errors", "summary"]
+        }
+      }
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("Fact-Checker returned empty result.");
+    return safeJsonParse<FactCheckResult>(text, 'FactChecker');
+  }, 'runFactCheckerAgent');
+};
+
+// --- ARCHITECT CORRECTION (re-run with fact-check errors) ---
+
+export const runArchitectCorrectionAgent = async (blueprint: string, errors: FactCheckError[]): Promise<string> => {
+  const model = AGENT_MODELS.ARCHITECT;
+  return withRetry(async () => {
+    const ai = getClient();
+    const errorsStr = errors.map((e, i) =>
+      `${i + 1}. CLAIM: "${e.claim}"\n   CORRECTION: ${e.correction}\n   SOURCE: ${e.source}`
+    ).join('\n\n');
+
+    const prompt = AGENT_ARCHITECT_CORRECTION_PROMPT
+      .replace('{BLUEPRINT}', blueprint)
+      .replace('{ERRORS}', errorsStr);
+
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+    });
+    return response.text || "Architect correction failed.";
+  }, 'runArchitectCorrectionAgent');
 };
 
 // Writer uses streaming to prevent ERR_CONNECTION_CLOSED on large responses.

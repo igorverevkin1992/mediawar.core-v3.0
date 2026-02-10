@@ -3,11 +3,12 @@ import { AgentType, INITIAL_STATE } from '../types';
 
 describe('types', () => {
   describe('AgentType enum', () => {
-    it('should have all 6 agent types', () => {
+    it('should have all 7 agent types', () => {
       expect(AgentType.SCOUT).toBe('SCOUT');
       expect(AgentType.RADAR).toBe('RADAR');
       expect(AgentType.ANALYST).toBe('ANALYST');
       expect(AgentType.ARCHITECT).toBe('ARCHITECT');
+      expect(AgentType.FACTCHECKER).toBe('FACTCHECKER');
       expect(AgentType.WRITER).toBe('WRITER');
       expect(AgentType.COMPLETED).toBe('COMPLETED');
     });
@@ -40,6 +41,10 @@ describe('types', () => {
 
     it('should not have showHistory open by default', () => {
       expect(INITIAL_STATE.showHistory).toBe(false);
+    });
+
+    it('should have factCheckAttempts at 0', () => {
+      expect(INITIAL_STATE.factCheckAttempts).toBe(0);
     });
   });
 });

@@ -1,9 +1,10 @@
 
 export enum AgentType {
-  SCOUT = 'SCOUT', // New Agent
+  SCOUT = 'SCOUT',
   RADAR = 'RADAR',
   ANALYST = 'ANALYST',
   ARCHITECT = 'ARCHITECT',
+  FACTCHECKER = 'FACTCHECKER',
   WRITER = 'WRITER',
   COMPLETED = 'COMPLETED'
 }
@@ -59,8 +60,10 @@ export interface SystemState {
   radarOutput?: string; // Potential viral topics
   researchDossier?: ResearchDossier | string; // Now supports raw text for editing
   structureMap?: string; // 5-block structure plan
+  factCheckOutput?: string; // Fact-checker verdict & report
+  factCheckAttempts: number; // Loop counter to prevent infinite re-checks
   finalScript?: ScriptBlock[];
-  
+
   // History
   history: HistoryItem[];
   showHistory: boolean;
@@ -75,6 +78,7 @@ export const INITIAL_STATE: SystemState = {
   isSteppable: false,
   stepStatus: 'IDLE',
   logs: ['> MEDIAWAR.CORE INITIALIZED...', '> WAITING FOR TARGET VECTOR...'],
+  factCheckAttempts: 0,
   history: [],
   showHistory: false
 };
