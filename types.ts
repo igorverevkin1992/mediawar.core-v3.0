@@ -16,24 +16,31 @@ export interface DataPoint {
 export interface TopicSuggestion {
   title: string;
   hook: string;
+  narrativeAngle: string;
   viralFactor: string;
+}
+
+export interface PrimaryDocument {
+  name: string;
+  url: string;
+  quote: string;
 }
 
 export interface ResearchDossier {
   topic: string;
-  claims: string[];
-  counterClaims: string[];
-  visualAnchors: string[];
+  primaryDocuments: PrimaryDocument[];
+  visualEvidence: string[];
   dataPoints: DataPoint[];
 }
 
 export interface ScriptBlock {
   timecode: string;
   visualCue: string;
+  overlayFX: string;
   audioScript: string;
   russianScript: string;
-  blockType: 'INTRO' | 'BODY' | 'TRANSITION' | 'SALES' | 'OUTRO';
-  imageUrl?: string; // New field for AI generated storyboard
+  blockType: 'HOOK' | 'INTRO' | 'BODY' | 'TRANSITION' | 'SALES' | 'OUTRO';
+  imageUrl?: string;
 }
 
 export interface HistoryItem {

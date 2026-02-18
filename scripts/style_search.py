@@ -47,5 +47,5 @@ def get_style_examples(query_topic, k=3):
 # Тест (если запустить файл напрямую)
 if __name__ == "__main__":
     test_topic = "War in Ukraine"
-    print(f"🔍 Тестовый поиск для темы: {test_topic}")
+    print(f"[TEST] Searching for topic: {test_topic}")
     print(get_style_examples(test_topic))

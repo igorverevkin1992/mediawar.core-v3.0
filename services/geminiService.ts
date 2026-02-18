@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { AGENT_SCOUT_PROMPT, AGENT_A_PROMPT, AGENT_B_PROMPT, AGENT_C_PROMPT, AGENT_D_PROMPT, CHARS_PER_SECOND, MIN_BLOCK_DURATION_SEC, IMAGE_GEN_MODEL, IMAGE_GEN_PROMPT_PREFIX, API_RETRY_COUNT, API_RETRY_BASE_DELAY_MS, AGENT_MODELS } from "../constants";
+import { AGENT_SCOUT_PROMPT, AGENT_LENS_PROMPT, AGENT_RESEARCH_PROMPT, AGENT_ARCHITECT_PROMPT, AGENT_SCRIPTWRITER_PROMPT, CHARS_PER_SECOND, MIN_BLOCK_DURATION_SEC, IMAGE_GEN_MODEL, IMAGE_GEN_PROMPT_PREFIX, API_RETRY_COUNT, API_RETRY_BASE_DELAY_MS, AGENT_MODELS } from "../constants";
 import { ResearchDossier, ScriptBlock, TopicSuggestion } from "../types";
 import { logger } from "./logger";
 
@@ -192,9 +192,10 @@ export const runScoutAgent = async (): Promise<TopicSuggestion[]> => {
             properties: {
               title: { type: Type.STRING },
               hook: { type: Type.STRING },
+              narrativeAngle: { type: Type.STRING },
               viralFactor: { type: Type.STRING }
             },
-            required: ["title", "hook", "viralFactor"]
+            required: ["title", "hook", "narrativeAngle", "viralFactor"]
           }
         }
       }
@@ -212,12 +213,12 @@ export const runRadarAgent = async (topic: string): Promise<string> => {
     const ai = getClient();
     const response = await ai.models.generateContent({
       model,
-      contents: `TOPIC: ${topic}\n\n${AGENT_A_PROMPT}`,
+      contents: `TOPIC: ${topic}\n\n${AGENT_LENS_PROMPT}`,
       config: {
         temperature: 0.7,
       }
     });
-    return response.text || "Radar failed to acquire target.";
+    return response.text || "Lens Agent failed to acquire target.";
   }, 'runRadarAgent');
 };
 
@@ -229,7 +230,7 @@ export const runAnalystAgent = async (topic: string, radarAnalysis: string): Pro
 
     const response = await ai.models.generateContent({
       model,
-      contents: `TOPIC: ${topic}\n\nRADAR ANALYSIS: ${radarAnalysis}\n\n${AGENT_B_PROMPT}`,
+      contents: `TOPIC: ${topic}\n\nLENS ANALYSIS: ${radarAnalysis}\n\n${AGENT_RESEARCH_PROMPT}`,
       config: {
         tools,
         responseMimeType: "application/json",
@@ -237,9 +238,19 @@ export const runAnalystAgent = async (topic: string, radarAnalysis: string): Pro
           type: Type.OBJECT,
           properties: {
             topic: { type: Type.STRING },
-            claims: { type: Type.ARRAY, items: { type: Type.STRING } },
-            counterClaims: { type: Type.ARRAY, items: { type: Type.STRING } },
-            visualAnchors: { type: Type.ARRAY, items: { type: Type.STRING } },
+            primaryDocuments: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  url: { type: Type.STRING },
+                  quote: { type: Type.STRING }
+                },
+                required: ["name", "url", "quote"]
+              }
+            },
+            visualEvidence: { type: Type.ARRAY, items: { type: Type.STRING } },
             dataPoints: {
               type: Type.ARRAY,
               items: {
@@ -252,7 +263,7 @@ export const runAnalystAgent = async (topic: string, radarAnalysis: string): Pro
               }
             }
           },
-          required: ["topic", "claims", "counterClaims", "visualAnchors", "dataPoints"]
+          required: ["topic", "primaryDocuments", "visualEvidence", "dataPoints"]
         }
       }
     });
@@ -271,7 +282,7 @@ export const runArchitectAgent = async (dossier: ResearchDossier | string): Prom
 
     const response = await ai.models.generateContent({
       model,
-      contents: `DOSSIER: ${dossierStr}\n\n${AGENT_C_PROMPT}`,
+      contents: `DOSSIER: ${dossierStr}\n\n${AGENT_ARCHITECT_PROMPT}`,
     });
     return response.text || "Architect failed to build structure.";
   }, 'runArchitectAgent');
@@ -299,14 +310,14 @@ export const runWriterAgent = async (structure: string, dossier: ResearchDossier
     
     // Inject style into prompt
     const enhancedPrompt = `
-      ${AGENT_D_PROMPT}
+      ${AGENT_SCRIPTWRITER_PROMPT}
 
-      === ВАЖНО: СТИЛЬ ДЖОННИ ХАРРИСА ===
-      Используй следующие реальные примеры из транскриптов Джонни Харриса, чтобы скопировать его ритм, лексику (insane, wild, here's the thing), визуальную подачу и интонацию.
-      Твой сценарий должен звучать ТАК ЖЕ.
-      
-      ${styleContext ? `ВОТ ПРИМЕРЫ ДЛЯ ЭТОЙ ТЕМЫ:\n${styleContext}` : "Примеры стиля не найдены, используй общий стиль Джонни Харриса."}
-      ======================================
+      === STYLE REFERENCE: HARRIS/KOZYRA DATA-NOIR ===
+      Use the following real examples from Johnny Harris transcripts to copy the rhythm, visual language, and pacing.
+      Your script must feel like a cold intelligence briefing, not a YouTube video.
+
+      ${styleContext ? `STYLE EXAMPLES FOR THIS TOPIC:\n${styleContext}` : "No style examples found. Default to cold, analytical Data-Noir tone."}
+      ================================================
     `;
     // --------------------------------------------------
 
@@ -327,11 +338,12 @@ export const runWriterAgent = async (structure: string, dossier: ResearchDossier
             properties: {
               timecode: { type: Type.STRING },
               visualCue: { type: Type.STRING },
+              overlayFX: { type: Type.STRING },
               audioScript: { type: Type.STRING },
               russianScript: { type: Type.STRING },
-              blockType: { type: Type.STRING, enum: ['INTRO', 'BODY', 'TRANSITION', 'SALES', 'OUTRO'] }
+              blockType: { type: Type.STRING, enum: ['HOOK', 'INTRO', 'BODY', 'TRANSITION', 'SALES', 'OUTRO'] }
             },
-            required: ["timecode", "visualCue", "audioScript", "russianScript", "blockType"]
+            required: ["timecode", "visualCue", "overlayFX", "audioScript", "russianScript", "blockType"]
           }
         }
       }

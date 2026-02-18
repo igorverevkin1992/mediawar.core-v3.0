@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run type-check:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx --package typescript tsc:*)",
+      "Bash(npm run build:*)",
+      "Bash(python scripts/ingest_style.py:*)",
+      "Bash(curl:*)"
+    ]
+  }
+}
